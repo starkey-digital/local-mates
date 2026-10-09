@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Dry run: builds, signs and verifies the installer, publishes nothing.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,8 +20,10 @@ jobs:
       - id: version
         name: Check tag matches Cargo.toml
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          grep -q "^version = \"$VERSION\"" Cargo.toml || { echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version"; exit 1; }
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $VERSION"; exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -33,6 +37,22 @@ jobs:
       run:
         shell: bash
     steps:
+      # An empty secret reads the same as a missing one; never fall back to shipping unsigned.
+      - name: Check signing secrets
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          missing=""
+          for v in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET ARTIFACT_SIGNING_ENDPOINT ARTIFACT_SIGNING_ACCOUNT ARTIFACT_SIGNING_PROFILE; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          [ -z "$missing" ] || { echo "::error::empty or unset:$missing — refusing to ship unsigned"; exit 1; }
+
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -47,11 +67,34 @@ jobs:
       # Previous release lets vpk build a small delta update; absent on the first release.
       - run: vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}"
         continue-on-error: true
-      - run: vpk pack --packId LocalMates --packTitle "Local Mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates-app.exe --icon app/ui/icon.ico
-      - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "Local Mates $VERSION" --tag "$GITHUB_REF_NAME"
+
+      # vpk signs every exe/dll it ships (skipping already-signed wintun.dll), plus Update.exe and
+      # Setup.exe, through Azure Artifact Signing with an RFC 3161 timestamp.
+      - name: Pack and sign
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          printf '{"Endpoint":"%s","CodeSigningAccountName":"%s","CertificateProfileName":"%s"}' \
+            "${{ vars.ARTIFACT_SIGNING_ENDPOINT }}" "${{ vars.ARTIFACT_SIGNING_ACCOUNT }}" "${{ vars.ARTIFACT_SIGNING_PROFILE }}" \
+            > "$RUNNER_TEMP/signing.json"
+          vpk pack --packId LocalMates --packTitle "Local Mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates-app.exe --icon app/ui/icon.ico \
+            --azureTrustedSignFile "$RUNNER_TEMP/signing.json"
+      - run: .github/scripts/verify-signatures.ps1
+        shell: pwsh
+
+      - if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: Releases/*Setup.exe
+      - if: github.ref_type == 'tag'
+        run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "Local Mates $VERSION" --tag "$GITHUB_REF_NAME"
 
   server:
     needs: version
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read
