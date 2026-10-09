@@ -1,0 +1,19 @@
+{{- if .Values.relay.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "relay.name" . }}
+data:
+  config.toml: |
+    http_bind_addr = "[::]:8080"
+    enable_quic_addr_discovery = true
+    enable_metrics = false
+
+    [tls]
+    hostname = {{ required "relay.hostname is required" .Values.relay.hostname | quote }}
+    https_bind_addr = "[::]:8443"
+    quic_bind_addr = "[::]:7842"
+    cert_mode = "Reloading"
+    manual_cert_path = "/etc/iroh-relay/tls/tls.crt"
+    manual_key_path = "/etc/iroh-relay/tls/tls.key"
+{{- end }}

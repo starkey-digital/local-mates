@@ -1,0 +1,13 @@
+{{- if and .Values.relay.enabled .Values.relay.tls.clusterIssuer }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "relay.name" . }}
+spec:
+  secretName: {{ include "relay.tlsSecret" . }}
+  dnsNames:
+    - {{ required "relay.hostname is required" .Values.relay.hostname | quote }}
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.relay.tls.clusterIssuer }}
+{{- end }}

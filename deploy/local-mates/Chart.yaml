@@ -1,0 +1,7 @@
+apiVersion: v2
+name: local-mates
+description: Server side of local mates — the iroh relay and the room-code lookup service
+type: application
+# Both are overwritten with the release version when the chart is published.
+version: 0.0.0
+appVersion: 0.0.0
