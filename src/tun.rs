@@ -21,8 +21,9 @@ pub fn open(ip: Ipv4Addr) -> Result<AsyncDevice> {
     let builder = builder.name("lmates0");
 
     let dev = builder.build_async().context(
-        "couldn't create the virtual network adapter: run as Administrator on Windows \
-         (with wintun.dll next to the exe), or with sudo on macOS/Linux",
+        "couldn't create the virtual network adapter: install the service with \
+         `local-mates service install` from an admin terminal on Windows, or run \
+         `sudo local-mates daemon` on macOS/Linux",
     )?;
 
     #[cfg(windows)]

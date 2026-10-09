@@ -7,9 +7,11 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 use iroh::{Endpoint, endpoint::Connection};
+use tokio::task::JoinSet;
 use tun_rs::AsyncDevice;
 
 use crate::{
+    ipc::{Event, Events},
     link,
     packet::{self, HOST_IP},
     tun,
@@ -18,24 +20,27 @@ use crate::{
 type Peers = Arc<RwLock<HashMap<Ipv4Addr, Connection>>>;
 
 /// The host is the hub: every joiner connects to it and it switches packets between them.
-pub async fn run(endpoint: Endpoint) -> Result<()> {
+pub async fn run(endpoint: Endpoint, events: Events) -> Result<()> {
     let tun = Arc::new(tun::open(HOST_IP)?);
     let peers = Peers::default();
 
-    println!(
-        "Hosting on {HOST_IP}. Friends join with:\n\n    local-mates join {}\n",
-        endpoint.id()
-    );
+    let _ = events.send(Event::Hosting {
+        code: endpoint.id().to_string(),
+        ip: HOST_IP,
+    });
 
-    tokio::spawn(tun_to_peers(tun.clone(), peers.clone()));
+    // Owned here so ending the session aborts every task and releases the adapter.
+    let mut tasks = JoinSet::new();
+    tasks.spawn(tun_to_peers(tun.clone(), peers.clone()));
 
     while let Some(incoming) = endpoint.accept().await {
-        let (tun, peers) = (tun.clone(), peers.clone());
-        tokio::spawn(async move {
-            if let Err(err) = admit(incoming, tun, peers).await {
+        let (tun, peers, events) = (tun.clone(), peers.clone(), events.clone());
+        tasks.spawn(async move {
+            if let Err(err) = admit(incoming, tun, peers, events).await {
                 tracing::warn!("peer failed to join: {err:#}");
             }
         });
+        while tasks.try_join_next().is_some() {}
     }
     Ok(())
 }
@@ -44,6 +49,7 @@ async fn admit(
     incoming: iroh::endpoint::Incoming,
     tun: Arc<AsyncDevice>,
     peers: Peers,
+    events: Events,
 ) -> Result<()> {
     let conn = incoming.accept()?.await?;
     let Some(ip) = claim_ip(&peers, &conn) else {
@@ -52,9 +58,9 @@ async fn admit(
     };
 
     let who = format!("{ip} ({})", conn.remote_id().fmt_short());
-    let res = serve(&conn, ip, &who, &tun, &peers).await;
+    let res = serve(&conn, ip, &who, &tun, &peers, &events).await;
     peers.write().unwrap().remove(&ip);
-    println!("{who} left");
+    let _ = events.send(Event::Peer { who, joined: false });
     res
 }
 
@@ -64,13 +70,21 @@ async fn serve(
     who: &str,
     tun: &AsyncDevice,
     peers: &Peers,
+    events: &Events,
 ) -> Result<()> {
     let mut assign = conn.open_uni().await?;
     assign.write_all(&ip.octets()).await?;
     assign.finish()?;
 
-    println!("{who} joined");
-    tokio::spawn(link::report_path(conn.clone(), who.to_owned()));
+    let _ = events.send(Event::Peer {
+        who: who.to_owned(),
+        joined: true,
+    });
+    tokio::spawn(link::report_path(
+        conn.clone(),
+        who.to_owned(),
+        events.clone(),
+    ));
 
     while let Ok(pkt) = conn.read_datagram().await {
         // Drop spoofed sources so a peer can't impersonate another.

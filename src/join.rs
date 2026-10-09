@@ -5,10 +5,12 @@ use bytes::Bytes;
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use tun_rs::AsyncDevice;
 
-use crate::{link, packet::HOST_IP, tun};
+use crate::{
+    ipc::{Event, Events},
+    link, tun,
+};
 
-pub async fn run(endpoint: Endpoint, host: EndpointId) -> Result<()> {
-    println!("Connecting to host...");
+pub async fn run(endpoint: Endpoint, host: EndpointId, events: Events) -> Result<()> {
     let conn = endpoint
         .connect(host, link::ALPN)
         .await
@@ -24,8 +26,8 @@ pub async fn run(endpoint: Endpoint, host: EndpointId) -> Result<()> {
     let ip = Ipv4Addr::from(assigned);
 
     let tun = tun::open(ip)?;
-    println!("Joined as {ip}. The host is {HOST_IP}.");
-    tokio::spawn(link::report_path(conn.clone(), "host".into()));
+    let _ = events.send(Event::Joined { ip });
+    tokio::spawn(link::report_path(conn.clone(), "host".into(), events));
 
     tokio::try_join!(adapter_to_host(&tun, &conn), host_to_adapter(&tun, &conn))
         .map(|_| ())

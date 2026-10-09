@@ -6,14 +6,22 @@ Windows-first, also runs on macOS and Linux. Work in progress.
 
 ## Prototype usage
 
-Command-line only for now. Needs admin (Windows) or root (macOS/Linux) to create the virtual adapter. On Windows, `wintun.dll` must sit next to `local-mates.exe` (CI builds bundle it).
+Command-line only for now. A small background service owns the virtual adapter, so it's the only part that needs admin:
+
+```sh
+local-mates service install   # Windows, once, from an admin terminal
+sudo local-mates daemon       # macOS/Linux, in another terminal
+```
+
+Then, as a normal user:
 
 ```sh
 local-mates host          # prints a join command with your code
 local-mates join <code>   # on your friend's machine
+local-mates leave         # or Ctrl-C
 ```
 
-The host is `10.77.0.1`; joiners get `10.77.0.2` and up. Each side prints whether the link is direct or relayed.
+The host is `10.77.0.1`; joiners get `10.77.0.2` and up. Each side prints whether the link is direct or relayed. Without a service running, `host`/`join` run it in-process, which then needs admin/root itself. On Windows, `wintun.dll` must sit next to `local-mates.exe` (CI builds bundle it).
 
 ## How it works
 
