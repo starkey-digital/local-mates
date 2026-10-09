@@ -15,8 +15,12 @@ pub const CLOSE_DENIED: u32 = 2;
 /// Longest device or room name sent over the wire, in bytes.
 pub const MAX_NAME: usize = 64;
 
+/// The hostname without any domain, so Macs show as `MacBook-Pro` rather than
+/// `MacBook-Pro.local`.
 pub fn device_name() -> String {
-    gethostname::gethostname().to_string_lossy().into_owned()
+    let host = gethostname::gethostname();
+    let host = host.to_string_lossy();
+    host.split('.').next().unwrap_or(&host).to_owned()
 }
 
 /// Truncated on a character boundary to fit the peer's read limit.

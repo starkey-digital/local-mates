@@ -102,6 +102,11 @@ fn fake_adapter() -> (
     (open, wire_rx)
 }
 
+/// Names are capped in transit, which matters on machines with long hostnames (like CI's).
+fn on_the_wire(name: &str) -> String {
+    link::decode_name(link::encode_name(name), "")
+}
+
 fn ipv4(src: Ipv4Addr, dst: Ipv4Addr, payload: &[u8]) -> Vec<u8> {
     let mut pkt = vec![0; 20];
     pkt[0] = 0x45;
@@ -238,7 +243,8 @@ async fn friend_joins_and_packets_flow_both_ways() {
     let rooms = guest.shared.store.lock().unwrap().rooms().to_vec();
     assert_eq!(rooms.len(), 1);
     assert_eq!(rooms[0].endpoint_id, host.endpoint.id().to_string());
-    assert_eq!(rooms[0].name, format!("{}'s room", link::device_name()));
+    let room = format!("{}'s room", link::device_name());
+    assert_eq!(rooms[0].name, on_the_wire(&room));
 }
 
 #[tokio::test]
@@ -254,7 +260,7 @@ async fn stranger_waits_for_approval_and_is_remembered() {
         unreachable!()
     };
     assert_eq!(id, guest.endpoint.id().to_string());
-    assert_eq!(name, link::device_name());
+    assert_eq!(name, on_the_wire(&link::device_name()));
     guest.next_event(|e| matches!(e, Event::Waiting)).await;
 
     host.answer(&id, true);

@@ -28,11 +28,15 @@ impl Adapter for AsyncDevice {
 const ADAPTER_NAME: &str = "local mates";
 
 pub fn open(ip: Ipv4Addr) -> Result<AsyncDevice> {
-    let builder = DeviceBuilder::new().ipv4(ip, PREFIX, None).mtu(MTU);
-    // Lowest metric so Windows sends games' 255.255.255.255 discovery broadcasts out of this
-    // adapter instead of the real NIC — the classic "connected but can't see the server" bug.
+    let builder = DeviceBuilder::new().ipv4(ip, PREFIX, None);
+    // `mtu()` would also set the IPv6 MTU on Windows, which rejects anything under 1280; we
+    // only route IPv4 anyway. Lowest metric so Windows sends games' 255.255.255.255 discovery
+    // broadcasts out of this adapter instead of the real NIC — the classic "connected but
+    // can't see the server" bug.
     #[cfg(windows)]
-    let builder = builder.name(ADAPTER_NAME).metric(1);
+    let builder = builder.mtu_v4(MTU).name(ADAPTER_NAME).metric(1);
+    #[cfg(not(windows))]
+    let builder = builder.mtu(MTU);
     #[cfg(target_os = "linux")]
     let builder = builder.name("lmates0");
 
