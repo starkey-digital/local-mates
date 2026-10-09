@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release
+      - run: cargo build --release -p local-mates -p local-mates-app
       - run: .github/scripts/bundle-windows.sh
 
       - uses: actions/setup-dotnet@v4
@@ -47,8 +47,8 @@ jobs:
       # Previous release lets vpk build a small delta update; absent on the first release.
       - run: vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}"
         continue-on-error: true
-      - run: vpk pack --packId LocalMates --packTitle "local mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates.exe
-      - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "local mates $VERSION" --tag "$GITHUB_REF_NAME"
+      - run: vpk pack --packId LocalMates --packTitle "Local Mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates-app.exe --icon app/ui/icon.ico
+      - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "Local Mates $VERSION" --tag "$GITHUB_REF_NAME"
 
   server:
     needs: version

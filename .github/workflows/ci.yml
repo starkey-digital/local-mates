@@ -21,9 +21,12 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install Slint's Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig-dev libxkbcommon-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
-      - run: cargo build --release
+      - run: cargo build --release -p local-mates -p local-mates-app
 
       - name: Bundle with wintun.dll
         if: runner.os == 'Windows'
@@ -37,7 +40,7 @@ jobs:
 
       - name: Bundle binary
         if: runner.os != 'Windows'
-        run: mkdir dist && cp target/release/local-mates dist/
+        run: mkdir dist && cp target/release/local-mates target/release/local-mates-app dist/
 
       - uses: actions/upload-artifact@v4
         with:

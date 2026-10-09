@@ -1,12 +1,23 @@
-# local mates
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+    <img src="docs/logo.png" alt="Local Mates" width="360">
+  </picture>
+</h1>
 
 Dead-simple virtual LAN for playing LAN games with friends. Open your room, share its code, play. No accounts; rooms you've joined are remembered so you can hop back in.
 
 Windows-first, also runs on macOS and Linux. Work in progress.
 
-## Prototype usage
+## Usage
 
-Command-line only for now. A small background service owns the virtual adapter, so it's the only part that needs admin:
+Open **Local Mates** (`local-mates-app`). The first time, it asks to set up its background service — the one admin prompt. Then open your room and share the code, or type a friend's code to join. Closing the window keeps it in the tray, where it pops back up when someone wants to join; Quit from the tray menu leaves any session running.
+
+![Local Mates hosting a room](docs/hosting.png)
+
+### Command line
+
+`local-mates` does everything the app does. A small background service owns the virtual adapter, so it's the only part that needs admin:
 
 ```sh
 local-mates service install   # Windows, once, from an admin terminal

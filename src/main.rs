@@ -1,23 +1,8 @@
-mod client;
-mod daemon;
-mod host;
-mod ipc;
-mod join;
-mod link;
-#[cfg(test)]
-mod net_tests;
-mod packet;
-mod rooms_api;
-#[cfg(windows)]
-mod service;
-mod session;
-mod store;
-mod tun;
-mod update;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use ipc::Request;
+#[cfg(windows)]
+use local_mates::service;
+use local_mates::{client, daemon, ipc, ipc::Request, update};
 
 /// Dead-simple virtual LAN for playing LAN games with friends.
 #[derive(Parser)]
@@ -58,7 +43,7 @@ enum Command {
 #[cfg(windows)]
 #[derive(Subcommand)]
 enum ServiceAction {
-    /// Install or update the service from this copy of local mates
+    /// Install or update the service from this copy of Local Mates
     Install,
     Uninstall,
 }

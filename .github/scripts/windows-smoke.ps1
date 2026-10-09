@@ -2,7 +2,7 @@
 # named pipe, Wintun adapter creation and its network settings, and clean teardown.
 $ErrorActionPreference = 'Stop'
 $exe = Resolve-Path dist\local-mates.exe
-$alias = 'local mates'
+$alias = 'Local Mates'
 
 function Wait-Until([scriptblock]$check, [string]$what, [int]$seconds = 30) {
     $deadline = (Get-Date).AddSeconds($seconds)

@@ -22,7 +22,7 @@ pub async fn session(req: Request) -> Result<()> {
 
     loop {
         tokio::select! {
-            event = rx.recv::<Event>() => match event?.context("lost connection to the local mates service")? {
+            event = rx.recv::<Event>() => match event?.context("lost connection to the Local Mates service")? {
                 Event::Ended { error } => return error.map_or(Ok(()), |err| Err(anyhow!(err))),
                 Event::Error { message } => bail!(message),
                 Event::JoinRequest { id, name } => {
@@ -102,7 +102,7 @@ pub async fn rooms(req: Request) -> Result<()> {
 }
 
 pub async fn leave() -> Result<()> {
-    let (_, mut tx) = ipc::connect().await.context("local mates isn't running")?;
+    let (_, mut tx) = ipc::connect().await.context("Local Mates isn't running")?;
     Ok(tx.send(&Request::Leave).await?)
 }
 
@@ -119,10 +119,10 @@ async fn connect_or_spawn() -> Result<(Rx, Tx)> {
 
 #[cfg(windows)]
 const NO_SERVICE: &str =
-    "local mates service isn't running: run `local-mates service install` from an admin terminal";
+    "Local Mates service isn't running: run `local-mates service install` from an admin terminal";
 #[cfg(not(windows))]
 const NO_SERVICE: &str =
-    "local mates daemon isn't running: start it with `sudo local-mates daemon`";
+    "Local Mates daemon isn't running: start it with `sudo local-mates daemon`";
 
 async fn check_version(rx: &mut Rx, tx: &mut Tx) -> Result<()> {
     tx.send(&Request::Status).await?;
