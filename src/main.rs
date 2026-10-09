@@ -3,6 +3,7 @@ mod join;
 mod link;
 mod packet;
 mod tun;
+mod update;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -24,8 +25,14 @@ enum Command {
     Join { code: EndpointId },
 }
 
+fn main() -> Result<()> {
+    // Must run first: Velopack may handle install/update hooks here and exit or restart.
+    velopack::VelopackApp::build().run();
+    run()
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -33,6 +40,7 @@ async fn main() -> Result<()> {
         )
         .init();
     let cli = Cli::parse();
+    update::spawn_check();
 
     // Fresh identity every run: sessions are throwaway, nothing to remember.
     let endpoint = Endpoint::builder(presets::N0)

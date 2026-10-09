@@ -21,3 +21,8 @@ The host is `10.77.0.1`; joiners get `10.77.0.2` and up. Each side prints whethe
 - [Wintun](https://www.wintun.net) (via `tun-rs`) for the virtual adapter; utun/tun on macOS/Linux.
 - The host acts as a hub: joiners' IP packets travel as QUIC datagrams, and broadcast/multicast (how LAN games discover each other) is fanned out to everyone.
 - On Windows the adapter gets the lowest route metric so game broadcasts go out of it, and is marked as a Private network so the firewall doesn't block games.
+- [Velopack](https://velopack.io) handles install and auto-updates from GitHub Releases: new versions download in the background and install on next launch.
+
+## Releasing
+
+Bump `version` in `Cargo.toml`, then push a matching tag (`v0.2.0`). The Release workflow builds the Windows installer and publishes it to GitHub Releases, where installed copies pick it up.

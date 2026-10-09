@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  VPK_VERSION: 1.2.161 # keep in step with the velopack crate
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches Cargo.toml
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$VERSION\"" Cargo.toml || { echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - run: .github/scripts/bundle-windows.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet tool install -g vpk --version "$VPK_VERSION"
+
+      # Previous release lets vpk build a small delta update; absent on the first release.
+      - run: vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}"
+        continue-on-error: true
+      - run: vpk pack --packId LocalMates --packTitle "local mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates.exe
+      - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "local mates $VERSION" --tag "$GITHUB_REF_NAME"
