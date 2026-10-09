@@ -24,7 +24,7 @@ pub async fn run(listener: Listener) -> Result<()> {
         shared: Shared {
             events: broadcast::channel(64).0,
             store: Arc::new(Mutex::new(Store::load())),
-            http: rooms_api::client(),
+            rooms_api: Some(rooms_api::RoomsApi::from_env()),
             approvals: Arc::default(),
         },
         session: Mutex::default(),

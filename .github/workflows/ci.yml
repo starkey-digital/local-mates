@@ -30,6 +30,11 @@ jobs:
         shell: bash
         run: .github/scripts/bundle-windows.sh
 
+      - name: Smoke test service and adapter
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .github/scripts/windows-smoke.ps1
+
       - name: Bundle binary
         if: runner.os != 'Windows'
         run: mkdir dist && cp target/release/local-mates dist/

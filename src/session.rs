@@ -9,7 +9,7 @@ use mates_proto::Code;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::{host, ipc::Events, join, link, rooms_api, store::Store};
+use crate::{host, ipc::Events, join, link, rooms_api::RoomsApi, store::Store, tun};
 
 pub enum Kind {
     Host,
@@ -22,7 +22,8 @@ pub enum Kind {
 pub struct Shared {
     pub events: Events,
     pub store: Arc<Mutex<Store>>,
-    pub http: reqwest::Client,
+    /// `None` disables short codes (used by tests to stay offline).
+    pub rooms_api: Option<RoomsApi>,
     /// Join requests waiting on an answer from a client.
     pub approvals: Arc<Mutex<HashMap<EndpointId, oneshot::Sender<bool>>>>,
 }
@@ -41,12 +42,12 @@ pub async fn run(kind: Kind, shared: &Shared, cancel: CancellationToken) -> Resu
         match kind {
             Kind::Host => {
                 endpoint.online().await;
-                host::run(endpoint.clone(), shared).await
+                host::run(endpoint.clone(), shared, tun::open).await
             }
             Kind::Join(target) => {
                 let host = resolve(&target, shared).await?;
                 endpoint.online().await;
-                join::run(endpoint.clone(), host, shared).await
+                join::run(endpoint.clone(), host, shared, tun::open).await
             }
         }
     };
@@ -62,7 +63,11 @@ async fn resolve(target: &str, shared: &Shared) -> Result<EndpointId> {
         return room.endpoint_id.parse().context("saved room is corrupt");
     }
     if let Some(code) = Code::parse(target) {
-        return rooms_api::resolve(&shared.http, &code).await;
+        let api = shared
+            .rooms_api
+            .as_ref()
+            .context("short codes need the rooms server")?;
+        return api.resolve(&code).await;
     }
     target
         .trim()

@@ -42,7 +42,10 @@ fn dir() -> PathBuf {
 
 impl Store {
     pub fn load() -> Self {
-        let path = dir().join("state.json");
+        Self::at(dir().join("state.json"))
+    }
+
+    pub fn at(path: PathBuf) -> Self {
         let state = match fs::read(&path) {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|err| {
                 tracing::warn!("ignoring unreadable {}: {err}", path.display());
@@ -111,7 +114,9 @@ impl Store {
 
     /// Write-then-rename so a crash never leaves a half-written file (and a lost room key).
     fn save(&self) -> io::Result<()> {
-        fs::create_dir_all(dir())?;
+        if let Some(dir) = self.path.parent() {
+            fs::create_dir_all(dir)?;
+        }
         let tmp = self.path.with_extension("json.tmp");
         fs::write(&tmp, serde_json::to_vec_pretty(&self.state)?)?;
         #[cfg(unix)]

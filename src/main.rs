@@ -4,6 +4,8 @@ mod host;
 mod ipc;
 mod join;
 mod link;
+#[cfg(test)]
+mod net_tests;
 mod packet;
 mod rooms_api;
 #[cfg(windows)]

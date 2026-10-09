@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::{io, net::Ipv4Addr};
 
 use anyhow::{Context, Result};
 use tun_rs::{AsyncDevice, DeviceBuilder};
@@ -7,6 +7,22 @@ use crate::packet::PREFIX;
 
 /// Below iroh's guaranteed minimum datagram size, so every packet fits in one datagram.
 pub const MTU: u16 = 1100;
+
+/// Where IP packets enter and leave the OS: the real virtual adapter, or a fake in tests.
+pub trait Adapter: Send + Sync + 'static {
+    fn recv(&self, buf: &mut [u8]) -> impl Future<Output = io::Result<usize>> + Send;
+    fn send(&self, pkt: &[u8]) -> impl Future<Output = io::Result<usize>> + Send;
+}
+
+impl Adapter for AsyncDevice {
+    fn recv(&self, buf: &mut [u8]) -> impl Future<Output = io::Result<usize>> + Send {
+        AsyncDevice::recv(self, buf)
+    }
+
+    fn send(&self, pkt: &[u8]) -> impl Future<Output = io::Result<usize>> + Send {
+        AsyncDevice::send(self, pkt)
+    }
+}
 
 #[cfg(windows)]
 const ADAPTER_NAME: &str = "local mates";

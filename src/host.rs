@@ -9,7 +9,6 @@ use anyhow::Result;
 use bytes::Bytes;
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use tokio::{sync::oneshot, task::JoinSet};
-use tun_rs::AsyncDevice;
 
 use crate::{
     ipc::{Event, Events},
@@ -18,7 +17,7 @@ use crate::{
     rooms_api,
     session::Shared,
     store::Device,
-    tun,
+    tun::{self, Adapter},
 };
 
 type Peers = Arc<RwLock<HashMap<Ipv4Addr, Connection>>>;
@@ -27,8 +26,12 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 const APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The host is the hub: every joiner connects to it and it switches packets between them.
-pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
-    let tun = Arc::new(tun::open(HOST_IP)?);
+pub async fn run<A: Adapter>(
+    endpoint: Endpoint,
+    shared: &Shared,
+    open: impl FnOnce(Ipv4Addr) -> Result<A>,
+) -> Result<()> {
+    let tun = Arc::new(open(HOST_IP)?);
     let peers = Peers::default();
     let events = shared.events.clone();
     let room: Arc<str> = format!("{}'s room", link::device_name()).into();
@@ -42,7 +45,9 @@ pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
     // Owned here so ending the session aborts every task and releases the adapter.
     let mut tasks = JoinSet::new();
     tasks.spawn(tun_to_peers(tun.clone(), peers.clone()));
-    tasks.spawn(rooms_api::announce(shared.http.clone(), endpoint.id()));
+    if let Some(api) = shared.rooms_api.clone() {
+        tasks.spawn(api.announce(endpoint.id()));
+    }
 
     while let Some(incoming) = endpoint.accept().await {
         let (tun, peers, shared, room) = (tun.clone(), peers.clone(), shared.clone(), room.clone());
@@ -56,10 +61,10 @@ pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
     Ok(())
 }
 
-async fn admit(
+async fn admit<A: Adapter>(
     incoming: iroh::endpoint::Incoming,
     room: &str,
-    tun: Arc<AsyncDevice>,
+    tun: Arc<A>,
     peers: Peers,
     shared: &Shared,
 ) -> Result<()> {
@@ -80,7 +85,7 @@ async fn admit(
     };
 
     let who = format!("{name} ({ip})");
-    let res = serve(&conn, ip, room, &who, &tun, &peers, &shared.events).await;
+    let res = serve(&conn, ip, room, &who, &*tun, &peers, &shared.events).await;
     peers.write().unwrap().remove(&ip);
     let _ = shared.events.send(Event::Peer { who, joined: false });
     res
@@ -116,12 +121,12 @@ async fn approve(shared: &Shared, id: EndpointId, name: &str) -> Result<bool> {
     Ok(allowed)
 }
 
-async fn serve(
+async fn serve<A: Adapter>(
     conn: &Connection,
     ip: Ipv4Addr,
     room: &str,
     who: &str,
-    tun: &AsyncDevice,
+    tun: &A,
     peers: &Peers,
     events: &Events,
 ) -> Result<()> {
@@ -158,15 +163,15 @@ fn claim_ip(peers: &Peers, conn: &Connection) -> Option<Ipv4Addr> {
     Some(ip)
 }
 
-async fn tun_to_peers(tun: Arc<AsyncDevice>, peers: Peers) {
+async fn tun_to_peers<A: Adapter>(tun: Arc<A>, peers: Peers) {
     let mut buf = vec![0; tun::MTU as usize];
     while let Ok(n) = tun.recv(&mut buf).await {
-        route(Bytes::copy_from_slice(&buf[..n]), None, &tun, &peers).await;
+        route(Bytes::copy_from_slice(&buf[..n]), None, &*tun, &peers).await;
     }
 }
 
 /// `from` is the sending peer, or `None` when the packet came from the host's own adapter.
-async fn route(pkt: Bytes, from: Option<Ipv4Addr>, tun: &AsyncDevice, peers: &Peers) {
+async fn route<A: Adapter>(pkt: Bytes, from: Option<Ipv4Addr>, tun: &A, peers: &Peers) {
     let Some((_, dst)) = packet::ipv4_src_dst(&pkt) else {
         return;
     };
