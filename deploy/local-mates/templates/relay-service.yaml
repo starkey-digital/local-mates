@@ -1,20 +1,22 @@
+{{- if .Values.relay.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}
-  {{- with .Values.service.annotations }}
+  name: {{ include "relay.name" . }}
+  {{- with .Values.relay.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.relay.service.type }}
   # Keep client source IPs: the relay reports them back for hole-punching.
-  {{- if ne .Values.service.type "ClusterIP" }}
+  {{- if ne .Values.relay.service.type "ClusterIP" }}
   externalTrafficPolicy: Local
   {{- end }}
   selector:
-    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ include "relay.name" . }}
   ports:
     - { name: http, port: 80, targetPort: http, protocol: TCP }
     - { name: https, port: 443, targetPort: https, protocol: TCP }
     - { name: quic, port: 7842, targetPort: quic, protocol: UDP }
+{{- end }}

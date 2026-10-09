@@ -23,6 +23,30 @@ pub async fn session(req: Request) -> Result<()> {
     }
 }
 
+/// For `Rooms`, `Forget` and `ResetCode`, which all reply with the room list.
+pub async fn rooms(req: Request) -> Result<()> {
+    let (mut rx, mut tx) = connect_or_spawn().await?;
+    tx.send(&req).await?;
+    loop {
+        match rx.recv().await?.context("no reply from service")? {
+            Event::Rooms { my_code, rooms } => {
+                println!("Your room's code: {my_code}\n");
+                if rooms.is_empty() {
+                    println!("No saved rooms yet. Rooms you join are saved here.");
+                    return Ok(());
+                }
+                for room in rooms {
+                    println!("    {}", room.name);
+                }
+                println!("\nReconnect with `local-mates join \"<name>\"`.");
+                return Ok(());
+            }
+            Event::Error { message } => bail!(message),
+            _ => {}
+        }
+    }
+}
+
 pub async fn leave() -> Result<()> {
     let (_, mut tx) = ipc::connect().await.context("local mates isn't running")?;
     Ok(tx.send(&Request::Leave).await?)
@@ -64,10 +88,18 @@ async fn check_version(rx: &mut Rx, tx: &mut Tx) -> Result<()> {
 
 fn print(event: Event) {
     match event {
-        Event::Hosting { code, ip } => {
-            println!("Hosting on {ip}. Friends join with:\n\n    local-mates join {code}\n")
-        }
-        Event::Joined { ip } => println!("Joined as {ip}. The host is {}.", crate::packet::HOST_IP),
+        Event::Hosting {
+            code,
+            long_code,
+            ip,
+        } => println!(
+            "Your room is open on {ip}. Friends join with:\n\n    local-mates join {code}\n\n\
+             If the code doesn't work, use:\n\n    local-mates join {long_code}\n"
+        ),
+        Event::Joined { room, ip } => println!(
+            "Joined {room} as {ip}. The host is {}.",
+            crate::packet::HOST_IP
+        ),
         Event::Peer { who, joined: true } => println!("{who} joined"),
         Event::Peer { who, joined: false } => println!("{who} left"),
         Event::Path {
@@ -78,6 +110,6 @@ fn print(event: Event) {
             "{who}: {} ({rtt_ms}ms)",
             if relayed { "relayed" } else { "direct" }
         ),
-        Event::Status { .. } | Event::Error { .. } | Event::Ended { .. } => {}
+        Event::Status { .. } | Event::Error { .. } | Event::Ended { .. } | Event::Rooms { .. } => {}
     }
 }

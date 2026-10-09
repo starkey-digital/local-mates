@@ -1,0 +1,45 @@
+relay:
+  enabled: true
+  image:
+    repository: ghcr.io/starkey-digital/local-mates-relay
+    # Defaults to the chart's appVersion.
+    tag: ""
+  # Required: the public hostname clients connect to. Needs TCP 443 and UDP 7842 reachable
+  # directly (not through an HTTP proxy or tunnel).
+  hostname: ""
+  tls:
+    # kubernetes.io/tls Secret holding the cert for `hostname`; reloaded on renewal.
+    # Defaults to <release>-relay-tls.
+    secretName: ""
+    # cert-manager ClusterIssuer. When set, a Certificate is created to fill the secret.
+    clusterIssuer: ""
+  service:
+    type: LoadBalancer
+    annotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+rooms:
+  enabled: true
+  image:
+    repository: ghcr.io/starkey-digital/local-mates-rooms
+    tag: ""
+  # Header carrying the real client IP when behind a proxy, e.g. CF-Connecting-IP.
+  clientIpHeader: ""
+  # Plain HTTP; expose it however you like (Ingress below, a tunnel, a Gateway route...).
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    tlsSecretName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 64Mi

@@ -1,6 +1,6 @@
 apiVersion: v2
-name: local-mates-relay
-description: iroh relay for local mates (NAT traversal and fallback relaying)
+name: local-mates
+description: Server side of local mates — the iroh relay and the room-code lookup service
 type: application
 # Both are overwritten with the release version when the chart is published.
 version: 0.0.0

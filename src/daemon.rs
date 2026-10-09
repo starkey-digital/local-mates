@@ -4,23 +4,28 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use interprocess::local_socket::tokio::{Listener, Stream, prelude::*};
-use iroh::EndpointId;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ipc::{self, Event, Events, Request},
-    session::{self, Kind},
+    ipc::{self, Event, Request},
+    rooms_api,
+    session::{self, Kind, Shared},
+    store::Store,
 };
 
 struct Daemon {
-    events: Events,
+    shared: Shared,
     session: Mutex<Option<CancellationToken>>,
 }
 
 pub async fn run(listener: Listener) -> Result<()> {
     let daemon = Arc::new(Daemon {
-        events: broadcast::channel(64).0,
+        shared: Shared {
+            events: broadcast::channel(64).0,
+            store: Arc::new(Mutex::new(Store::load())),
+            http: rooms_api::client(),
+        },
         session: Mutex::default(),
     });
     loop {
@@ -36,7 +41,7 @@ pub async fn run(listener: Listener) -> Result<()> {
 
 async fn serve(stream: Stream, daemon: &Arc<Daemon>) -> std::io::Result<()> {
     let (mut rx, mut tx) = ipc::split(stream);
-    let mut events = daemon.events.subscribe();
+    let mut events = daemon.shared.events.subscribe();
     loop {
         tokio::select! {
             req = rx.recv::<Request>() => match req? {
@@ -69,13 +74,41 @@ impl Daemon {
                 }
                 return None;
             }
+            Request::Rooms => return Some(self.rooms()),
+            Request::Forget { name } => {
+                return Some(match self.shared.store.lock().unwrap().forget(&name) {
+                    Ok(true) => self.rooms(),
+                    Ok(false) => error(&format!("No saved room called {name}")),
+                    Err(err) => error(&format!("Couldn't save: {err}")),
+                });
+            }
+            Request::ResetCode => {
+                // Holding the session lock stops a session starting with the old key meanwhile.
+                let session = self.session.lock().unwrap();
+                if session.is_some() {
+                    return Some(error("Leave the current session first"));
+                }
+                if let Err(err) = self.shared.store.lock().unwrap().reset_key() {
+                    return Some(error(&format!("Couldn't save: {err}")));
+                }
+                drop(session);
+                return Some(self.rooms());
+            }
             Request::Host => Kind::Host,
-            Request::Join { code } => match code.trim().parse::<EndpointId>() {
-                Ok(host) => Kind::Join(host),
-                Err(_) => return Some(error("That code doesn't look right")),
-            },
+            Request::Join { code } => Kind::Join(code),
         };
         self.start(kind)
+    }
+
+    fn rooms(&self) -> Event {
+        let mut store = self.shared.store.lock().unwrap();
+        match store.key() {
+            Ok(key) => Event::Rooms {
+                my_code: rooms_api::code_for(key.public()).to_string(),
+                rooms: store.rooms().to_vec(),
+            },
+            Err(err) => error(&format!("Couldn't save: {err}")),
+        }
     }
 
     fn start(self: &Arc<Self>, kind: Kind) -> Option<Event> {
@@ -90,10 +123,10 @@ impl Daemon {
 
         let daemon = self.clone();
         tokio::spawn(async move {
-            let res = session::run(kind, daemon.events.clone(), cancel).await;
+            let res = session::run(kind, &daemon.shared, cancel).await;
             // Cleared only once the adapter is gone, so a new session can't race the old one.
             daemon.session.lock().unwrap().take();
-            let _ = daemon.events.send(Event::Ended {
+            let _ = daemon.shared.events.send(Event::Ended {
                 error: res.err().map(|err| format!("{err:#}")),
             });
         });

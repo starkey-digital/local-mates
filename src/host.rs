@@ -12,31 +12,39 @@ use tun_rs::AsyncDevice;
 
 use crate::{
     ipc::{Event, Events},
-    link,
+    join, link,
     packet::{self, HOST_IP},
+    rooms_api,
+    session::Shared,
     tun,
 };
 
 type Peers = Arc<RwLock<HashMap<Ipv4Addr, Connection>>>;
 
 /// The host is the hub: every joiner connects to it and it switches packets between them.
-pub async fn run(endpoint: Endpoint, events: Events) -> Result<()> {
+pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
     let tun = Arc::new(tun::open(HOST_IP)?);
     let peers = Peers::default();
+    let events = shared.events.clone();
+    let room = format!("{}'s room", gethostname::gethostname().to_string_lossy());
+    // Must fit the joiner's read limit; the cut can split a character, which they render lossily.
+    let room: Arc<[u8]> = room.as_bytes()[..room.len().min(join::MAX_NAME)].into();
 
     let _ = events.send(Event::Hosting {
-        code: endpoint.id().to_string(),
+        code: rooms_api::code_for(endpoint.id()).to_string(),
+        long_code: endpoint.id().to_string(),
         ip: HOST_IP,
     });
 
     // Owned here so ending the session aborts every task and releases the adapter.
     let mut tasks = JoinSet::new();
     tasks.spawn(tun_to_peers(tun.clone(), peers.clone()));
+    tasks.spawn(rooms_api::announce(shared.http.clone(), endpoint.id()));
 
     while let Some(incoming) = endpoint.accept().await {
-        let (tun, peers, events) = (tun.clone(), peers.clone(), events.clone());
+        let (tun, peers, events, room) = (tun.clone(), peers.clone(), events.clone(), room.clone());
         tasks.spawn(async move {
-            if let Err(err) = admit(incoming, tun, peers, events).await {
+            if let Err(err) = admit(incoming, &room, tun, peers, events).await {
                 tracing::warn!("peer failed to join: {err:#}");
             }
         });
@@ -47,6 +55,7 @@ pub async fn run(endpoint: Endpoint, events: Events) -> Result<()> {
 
 async fn admit(
     incoming: iroh::endpoint::Incoming,
+    room: &[u8],
     tun: Arc<AsyncDevice>,
     peers: Peers,
     events: Events,
@@ -58,7 +67,7 @@ async fn admit(
     };
 
     let who = format!("{ip} ({})", conn.remote_id().fmt_short());
-    let res = serve(&conn, ip, &who, &tun, &peers, &events).await;
+    let res = serve(&conn, ip, room, &who, &tun, &peers, &events).await;
     peers.write().unwrap().remove(&ip);
     let _ = events.send(Event::Peer { who, joined: false });
     res
@@ -67,6 +76,7 @@ async fn admit(
 async fn serve(
     conn: &Connection,
     ip: Ipv4Addr,
+    room: &[u8],
     who: &str,
     tun: &AsyncDevice,
     peers: &Peers,
@@ -74,6 +84,7 @@ async fn serve(
 ) -> Result<()> {
     let mut assign = conn.open_uni().await?;
     assign.write_all(&ip.octets()).await?;
+    assign.write_all(room).await?;
     assign.finish()?;
 
     let _ = events.send(Event::Peer {

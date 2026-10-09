@@ -50,7 +50,7 @@ jobs:
       - run: vpk pack --packId LocalMates --packTitle "local mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates.exe
       - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "local mates $VERSION" --tag "$GITHUB_REF_NAME"
 
-  relay:
+  server:
     needs: version
     runs-on: ubuntu-latest
     permissions:
@@ -80,8 +80,17 @@ jobs:
             ${{ env.REGISTRY }}/local-mates-relay:${{ env.VERSION }}
             ${{ env.REGISTRY }}/local-mates-relay:latest
 
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/local-mates-rooms:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/local-mates-rooms:latest
+
       # Chart version == app version, so ArgoCD tracking a semver range picks up each release.
       - uses: azure/setup-helm@v4
       - run: |
-          helm package deploy/relay --version "$VERSION" --app-version "$VERSION"
-          helm push "local-mates-relay-$VERSION.tgz" "oci://$REGISTRY/charts"
+          helm package deploy/local-mates --version "$VERSION" --app-version "$VERSION"
+          helm push "local-mates-$VERSION.tgz" "oci://$REGISTRY/charts"

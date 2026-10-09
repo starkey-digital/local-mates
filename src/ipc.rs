@@ -9,13 +9,25 @@ use interprocess::local_socket::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 
+use crate::store::SavedRoom;
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
     Status,
+    /// Open this device's room.
     Host,
-    Join { code: String },
+    /// Join by short code, long code, or the name of a saved room.
+    Join {
+        code: String,
+    },
     Leave,
+    Rooms,
+    Forget {
+        name: String,
+    },
+    /// New identity for this device's room, so its old code stops working.
+    ResetCode,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -28,11 +40,18 @@ pub enum Event {
     Error {
         message: String,
     },
+    /// Reply to `Rooms`, `Forget` and `ResetCode`.
+    Rooms {
+        my_code: String,
+        rooms: Vec<SavedRoom>,
+    },
     Hosting {
         code: String,
+        long_code: String,
         ip: Ipv4Addr,
     },
     Joined {
+        room: String,
         ip: Ipv4Addr,
     },
     Peer {

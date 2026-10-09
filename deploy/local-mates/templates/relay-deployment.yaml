@@ -1,28 +1,25 @@
+{{- if .Values.relay.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "relay.name" . }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ .Release.Name }}
+      app.kubernetes.io/name: {{ include "relay.name" . }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ .Release.Name }}
+        app.kubernetes.io/name: {{ include "relay.name" . }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/relay-configmap.yaml") . | sha256sum }}
     spec:
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
+        {{- include "podSecurity" . | nindent 8 }}
       containers:
         - name: relay
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "image" (dict "image" .Values.relay.image "appVersion" .Chart.AppVersion) }}
           ports:
             - { name: http, containerPort: 8080, protocol: TCP }
             - { name: https, containerPort: 8443, protocol: TCP }
@@ -31,19 +28,17 @@ spec:
             tcpSocket:
               port: https
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
+            {{- include "containerSecurity" . | nindent 12 }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.relay.resources | nindent 12 }}
           volumeMounts:
             - { name: config, mountPath: /etc/iroh-relay/config.toml, subPath: config.toml }
             - { name: tls, mountPath: /etc/iroh-relay/tls, readOnly: true }
       volumes:
         - name: config
           configMap:
-            name: {{ .Release.Name }}
+            name: {{ include "relay.name" . }}
         - name: tls
           secret:
             secretName: {{ include "relay.tlsSecret" . }}
+{{- end }}
