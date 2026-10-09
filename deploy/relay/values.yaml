@@ -1,0 +1,25 @@
+image:
+  repository: ghcr.io/starkey-digital/local-mates-relay
+  # Defaults to the chart's appVersion.
+  tag: ""
+
+# Required: the public hostname clients connect to.
+hostname: ""
+
+tls:
+  # kubernetes.io/tls Secret holding the cert for `hostname`; reloaded on renewal.
+  # Defaults to <release>-tls.
+  secretName: ""
+  # cert-manager ClusterIssuer. When set, a Certificate is created to fill the secret.
+  clusterIssuer: ""
+
+service:
+  type: LoadBalancer
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

@@ -23,6 +23,15 @@ The host is `10.77.0.1`; joiners get `10.77.0.2` and up. Each side prints whethe
 - On Windows the adapter gets the lowest route metric so game broadcasts go out of it, and is marked as a Private network so the firewall doesn't block games.
 - [Velopack](https://velopack.io) handles install and auto-updates from GitHub Releases: new versions download in the background and install on next launch.
 
+## Relay
+
+`relay/` builds the official [iroh relay](https://crates.io/crates/iroh-relay), and `deploy/relay` is a Helm chart for it. It needs public TCP 443 and UDP 7842 (UDP is how clients learn their public address for hole-punching, so it can't sit behind an HTTP-only proxy).
+
+```sh
+helm install relay oci://ghcr.io/starkey-digital/charts/local-mates-relay \
+  --set hostname=relay.example.com --set tls.clusterIssuer=letsencrypt
+```
+
 ## Releasing
 
-Bump `version` in `Cargo.toml`, then push a matching tag (`v0.2.0`). The Release workflow builds the Windows installer and publishes it to GitHub Releases, where installed copies pick it up.
+Bump `version` in `Cargo.toml`, then push a matching tag (`v0.2.0`). The Release workflow publishes the Windows installer to GitHub Releases (installed copies pick it up), plus the relay image and chart to GHCR.

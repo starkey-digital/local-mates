@@ -1,6 +1,6 @@
 use velopack::{UpdateCheck, UpdateManager, sources::GithubSource};
 
-const REPO: &str = "https://github.com/datstarkey/local-mates";
+const REPO: &str = "https://github.com/starkey-digital/local-mates";
 
 /// Downloads a newer release in the background. Velopack applies it on the next launch, so a
 /// running session is never interrupted. Does nothing when not installed (e.g. `cargo run`).

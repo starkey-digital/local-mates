@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}
+data:
+  config.toml: |
+    http_bind_addr = "[::]:8080"
+    enable_quic_addr_discovery = true
+    enable_metrics = false
+
+    [tls]
+    hostname = {{ required "hostname is required" .Values.hostname | quote }}
+    https_bind_addr = "[::]:8443"
+    quic_bind_addr = "[::]:7842"
+    cert_mode = "Reloading"
+    manual_cert_path = "/etc/iroh-relay/tls/tls.crt"
+    manual_key_path = "/etc/iroh-relay/tls/tls.key"

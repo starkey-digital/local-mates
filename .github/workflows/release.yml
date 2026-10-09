@@ -4,28 +4,36 @@ on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
-
 env:
   CARGO_TERM_COLOR: always
   VPK_VERSION: 1.2.161 # keep in step with the velopack crate
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Check tag matches Cargo.toml
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$VERSION\"" Cargo.toml || { echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   windows:
+    needs: version
     runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check tag matches Cargo.toml
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          grep -q "^version = \"$VERSION\"" Cargo.toml || { echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version"; exit 1; }
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
@@ -41,3 +49,39 @@ jobs:
         continue-on-error: true
       - run: vpk pack --packId LocalMates --packTitle "local mates" --packVersion "$VERSION" --packDir dist --mainExe local-mates.exe
       - run: vpk upload github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --token "${{ secrets.GITHUB_TOKEN }}" --publish --releaseName "local mates $VERSION" --tag "$GITHUB_REF_NAME"
+
+  relay:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Relay version from Cargo.lock
+        run: echo "IROH_RELAY_VERSION=$(grep -A1 '^name = "iroh-relay"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: relay
+          push: true
+          build-args: IROH_RELAY_VERSION=${{ env.IROH_RELAY_VERSION }}
+          tags: |
+            ${{ env.REGISTRY }}/local-mates-relay:${{ env.VERSION }}
+            ${{ env.REGISTRY }}/local-mates-relay:latest
+
+      # Chart version == app version, so ArgoCD tracking a semver range picks up each release.
+      - uses: azure/setup-helm@v4
+      - run: |
+          helm package deploy/relay --version "$VERSION" --app-version "$VERSION"
+          helm push "local-mates-relay-$VERSION.tgz" "oci://$REGISTRY/charts"
