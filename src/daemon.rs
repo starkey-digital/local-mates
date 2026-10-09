@@ -17,6 +17,16 @@ use crate::{
 struct Daemon {
     shared: Shared,
     session: Mutex<Option<CancellationToken>>,
+    snapshot: Mutex<Snapshot>,
+}
+
+/// What a client opening mid-session needs to catch up: replayed after every `Status` reply.
+#[derive(Default)]
+struct Snapshot {
+    /// The latest `Hosting`, `Waiting` or `Joined`.
+    session: Option<Event>,
+    /// Unanswered `JoinRequest`s.
+    requests: Vec<Event>,
 }
 
 pub async fn run(listener: Listener) -> Result<()> {
@@ -28,7 +38,9 @@ pub async fn run(listener: Listener) -> Result<()> {
             approvals: Arc::default(),
         },
         session: Mutex::default(),
+        snapshot: Mutex::default(),
     });
+    tokio::spawn(record(daemon.clone()));
     loop {
         let stream = listener.accept().await?;
         let daemon = daemon.clone();
@@ -46,9 +58,17 @@ async fn serve(stream: Stream, daemon: &Arc<Daemon>) -> std::io::Result<()> {
     loop {
         tokio::select! {
             req = rx.recv::<Request>() => match req? {
-                Some(req) => if let Some(reply) = daemon.handle(req) {
-                    tx.send(&reply).await?;
-                },
+                Some(req) => {
+                    let catch_up = matches!(req, Request::Status);
+                    if let Some(reply) = daemon.handle(req) {
+                        tx.send(&reply).await?;
+                    }
+                    if catch_up {
+                        for event in daemon.catch_up() {
+                            tx.send(&event).await?;
+                        }
+                    }
+                }
                 None => return Ok(()),
             },
             event = events.recv() => match event {
@@ -60,7 +80,41 @@ async fn serve(stream: Stream, daemon: &Arc<Daemon>) -> std::io::Result<()> {
     }
 }
 
+/// Keeps the snapshot in step with the events every client sees.
+async fn record(daemon: Arc<Daemon>) {
+    let mut events = daemon.shared.events.subscribe();
+    loop {
+        let event = match events.recv().await {
+            Ok(event) => event,
+            Err(RecvError::Lagged(_)) => continue,
+            Err(RecvError::Closed) => return,
+        };
+        let mut snapshot = daemon.snapshot.lock().unwrap();
+        match &event {
+            Event::Hosting { .. } | Event::Waiting | Event::Joined { .. } => {
+                snapshot.session = Some(event)
+            }
+            Event::Ended { .. } => *snapshot = Snapshot::default(),
+            Event::JoinRequest { .. } => snapshot.requests.push(event),
+            Event::JoinRequestClosed { id } => snapshot
+                .requests
+                .retain(|r| !matches!(r, Event::JoinRequest { id: req, .. } if req == id)),
+            _ => {}
+        }
+    }
+}
+
 impl Daemon {
+    fn catch_up(&self) -> Vec<Event> {
+        let snapshot = self.snapshot.lock().unwrap();
+        snapshot
+            .session
+            .iter()
+            .chain(&snapshot.requests)
+            .cloned()
+            .collect()
+    }
+
     fn handle(self: &Arc<Self>, req: Request) -> Option<Event> {
         let kind = match req {
             Request::Status => {

@@ -4,9 +4,15 @@ Dead-simple virtual LAN for playing LAN games with friends. Open your room, shar
 
 Windows-first, also runs on macOS and Linux. Work in progress.
 
-## Prototype usage
+## Usage
 
-Command-line only for now. A small background service owns the virtual adapter, so it's the only part that needs admin:
+Open **local mates** (`local-mates-app`). The first time, it asks to set up its background service — the one admin prompt. Then open your room and share the code, or type a friend's code to join. Closing the window leaves your session running.
+
+![local mates hosting a room](docs/hosting.png)
+
+### Command line
+
+`local-mates` does everything the app does. A small background service owns the virtual adapter, so it's the only part that needs admin:
 
 ```sh
 local-mates service install   # Windows, once, from an admin terminal

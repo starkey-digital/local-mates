@@ -1,0 +1,248 @@
+import { Button, LineEdit, ScrollView, Palette } from "std-widgets.slint";
+
+export struct Room {
+    name: string,
+}
+
+export struct JoinRequest {
+    id: string,
+    name: string,
+}
+
+export enum Phase { offline, idle, starting, hosting, waiting, joined }
+
+component Card inherits Rectangle {
+    background: Palette.alternate-background;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+}
+
+component Label inherits Text {
+    color: Palette.foreground;
+    wrap: word-wrap;
+}
+
+component Muted inherits Text {
+    color: Palette.foreground.with-alpha(0.6);
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+component Heading inherits Text {
+    color: Palette.foreground.with-alpha(0.6);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+component BigCode inherits Text {
+    color: Palette.foreground;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 3px;
+}
+
+export component AppWindow inherits Window {
+    title: "local mates";
+    preferred-width: 380px;
+    preferred-height: 600px;
+    min-width: 340px;
+    min-height: 420px;
+    background: Palette.background;
+
+    in property <Phase> phase: Phase.offline;
+    // False where there's no installer to run (macOS/Linux use `sudo local-mates daemon`).
+    in property <bool> can-setup;
+    in property <bool> setting-up;
+    in property <string> my-code;
+    in property <string> long-code;
+    in property <string> room-name;
+    in property <string> my-ip;
+    in property <string> error;
+    in property <[Room]> rooms;
+    in property <[JoinRequest]> requests;
+    in property <[string]> activity;
+
+    callback setup();
+    callback host();
+    callback leave();
+    callback join(code: string);
+    callback join-saved(name: string);
+    callback forget(name: string);
+    callback answer(id: string, allow: bool);
+    callback copy(text: string);
+
+    property <bool> idle: phase == Phase.idle;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 14px;
+            alignment: start;
+
+            Text {
+                text: "local mates";
+                color: Palette.foreground;
+                font-size: 22px;
+                font-weight: 700;
+            }
+
+            if phase == Phase.offline: Card {
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    Label {
+                        text: can-setup
+                            ? "local mates needs a one-time setup to create its network adapter. Windows will ask for permission."
+                            : "The local mates service isn't running. Start it with: sudo local-mates daemon";
+                    }
+                    if can-setup: Button {
+                        text: setting-up ? "Setting up…" : "Set up";
+                        primary: true;
+                        enabled: !setting-up;
+                        clicked => { setup(); }
+                    }
+                }
+            }
+
+            for request in requests: Card {
+                border-color: Palette.accent-background;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    Label {
+                        text: "\{request.name} wants to join your room.";
+                        font-weight: 600;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: "Let them in";
+                            primary: true;
+                            clicked => { answer(request.id, true); }
+                        }
+                        Button {
+                            text: "No";
+                            clicked => { answer(request.id, false); }
+                        }
+                    }
+                }
+            }
+
+            if phase != Phase.offline: Card {
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+
+                    if idle || phase == Phase.hosting: VerticalLayout {
+                        spacing: 6px;
+                        Heading { text: phase == Phase.hosting ? "YOUR ROOM IS OPEN" : "YOUR ROOM CODE"; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: space-between;
+                            BigCode { text: my-code; vertical-alignment: center; }
+                            Button {
+                                text: "Copy";
+                                clicked => { copy(my-code); }
+                            }
+                        }
+                        if phase == Phase.hosting: Muted {
+                            text: "Friends join with this code. You're \{my-ip}.";
+                        }
+                        if idle: Button {
+                            text: "Open my room";
+                            primary: true;
+                            clicked => { host(); }
+                        }
+                        if phase == Phase.hosting: Button {
+                            text: "Close room";
+                            clicked => { leave(); }
+                        }
+                    }
+
+                    if phase == Phase.starting: Label { text: "Connecting…"; }
+
+                    if phase == Phase.waiting: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "Waiting for the host to let you in…"; }
+                        Button {
+                            text: "Cancel";
+                            clicked => { leave(); }
+                        }
+                    }
+
+                    if phase == Phase.joined: VerticalLayout {
+                        spacing: 6px;
+                        Heading { text: "CONNECTED"; }
+                        Label { text: room-name; font-size: 18px; font-weight: 600; }
+                        Muted { text: "You're \{my-ip}. The host is 10.77.0.1."; }
+                        Button {
+                            text: "Leave";
+                            clicked => { leave(); }
+                        }
+                    }
+                }
+            }
+
+            if error != "": Text {
+                text: error;
+                color: #d13438;
+                wrap: word-wrap;
+            }
+
+            if idle: VerticalLayout {
+                spacing: 6px;
+                Heading { text: "JOIN A FRIEND"; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    code := LineEdit {
+                        placeholder-text: "Their code, e.g. K7M-Q2X";
+                        accepted(text) => { join(text); }
+                    }
+                    Button {
+                        text: "Join";
+                        primary: code.text != "";
+                        enabled: code.text != "";
+                        clicked => { join(code.text); }
+                    }
+                }
+            }
+
+            if rooms.length > 0: VerticalLayout {
+                spacing: 6px;
+                Heading { text: "SAVED ROOMS"; }
+                for room in rooms: Card {
+                    HorizontalLayout {
+                        padding: 8px;
+                        padding-left: 12px;
+                        spacing: 8px;
+                        Label {
+                            text: room.name;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                            wrap: no-wrap;
+                        }
+                        Button {
+                            text: "Join";
+                            enabled: idle;
+                            clicked => { join-saved(room.name); }
+                        }
+                        Button {
+                            text: "Forget";
+                            enabled: idle;
+                            clicked => { forget(room.name); }
+                        }
+                    }
+                }
+            }
+
+            if activity.length > 0: VerticalLayout {
+                spacing: 4px;
+                Heading { text: "ACTIVITY"; }
+                for line in activity: Muted { text: line; }
+            }
+        }
+    }
+}
