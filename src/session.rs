@@ -1,8 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{Context, Result};
 use iroh::{Endpoint, EndpointId, endpoint::presets};
 use mates_proto::Code;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::{host, ipc::Events, join, link, rooms_api, store::Store};
@@ -19,6 +23,8 @@ pub struct Shared {
     pub events: Events,
     pub store: Arc<Mutex<Store>>,
     pub http: reqwest::Client,
+    /// Join requests waiting on an answer from a client.
+    pub approvals: Arc<Mutex<HashMap<EndpointId, oneshot::Sender<bool>>>>,
 }
 
 pub async fn run(kind: Kind, shared: &Shared, cancel: CancellationToken) -> Result<()> {
@@ -51,7 +57,7 @@ pub async fn run(kind: Kind, shared: &Shared, cancel: CancellationToken) -> Resu
 }
 
 async fn resolve(target: &str, shared: &Shared) -> Result<EndpointId> {
-    let saved = shared.store.lock().unwrap().find(target).cloned();
+    let saved = shared.store.lock().unwrap().find_room(target).cloned();
     if let Some(room) = saved {
         return room.endpoint_id.parse().context("saved room is corrupt");
     }

@@ -5,9 +5,7 @@ use bytes::Bytes;
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use tun_rs::AsyncDevice;
 
-use crate::{ipc::Event, link, session::Shared, store::SavedRoom, tun};
-
-pub const MAX_NAME: usize = 64;
+use crate::{ipc::Event, link, session::Shared, store::Device, tun};
 
 pub async fn run(endpoint: Endpoint, host: EndpointId, shared: &Shared) -> Result<()> {
     let conn = endpoint
@@ -15,20 +13,24 @@ pub async fn run(endpoint: Endpoint, host: EndpointId, shared: &Shared) -> Resul
         .await
         .context("couldn't reach the room: the host may not be hosting right now")?;
 
-    let hello = conn.accept_uni().await?.read_to_end(4 + MAX_NAME).await?;
-    let (ip, name) = hello
+    let mut hello = conn.open_uni().await?;
+    hello
+        .write_all(link::encode_name(&link::device_name()))
+        .await?;
+    hello.finish()?;
+    let _ = shared.events.send(Event::Waiting);
+
+    // Arrives once the host lets us in; a refusal closes the connection instead.
+    let mut welcome = conn.accept_uni().await.map_err(link::explain_close)?;
+    let welcome = welcome.read_to_end(4 + link::MAX_NAME).await?;
+    let (ip, name) = welcome
         .split_first_chunk::<4>()
         .context("host sent a malformed greeting")?;
     let ip = Ipv4Addr::from(*ip);
-    let name = String::from_utf8_lossy(name).trim().to_owned();
-    let name = if name.is_empty() {
-        "Unnamed room".into()
-    } else {
-        name
-    };
+    let name = link::decode_name(name, "Unnamed room");
 
     let tun = tun::open(ip)?;
-    shared.store.lock().unwrap().remember(SavedRoom {
+    shared.store.lock().unwrap().remember_room(Device {
         name: name.clone(),
         endpoint_id: host.to_string(),
     })?;

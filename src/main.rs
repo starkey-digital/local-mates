@@ -35,7 +35,7 @@ enum Command {
     Leave,
     /// Show your room's code and the rooms you've joined before
     Rooms,
-    /// Remove a saved room
+    /// Remove a saved room, or a friend allowed into your room
     Forget { name: String },
     /// Give your room a new code; the old one stops working
     ResetCode,

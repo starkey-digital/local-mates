@@ -25,6 +25,7 @@ pub async fn run(listener: Listener) -> Result<()> {
             events: broadcast::channel(64).0,
             store: Arc::new(Mutex::new(Store::load())),
             http: rooms_api::client(),
+            approvals: Arc::default(),
         },
         session: Mutex::default(),
     });
@@ -94,6 +95,16 @@ impl Daemon {
                 drop(session);
                 return Some(self.rooms());
             }
+            Request::Approve { id, allow } => {
+                let pending = id
+                    .parse::<iroh::EndpointId>()
+                    .ok()
+                    .and_then(|id| self.shared.approvals.lock().unwrap().remove(&id));
+                if let Some(answer) = pending {
+                    let _ = answer.send(allow);
+                }
+                return None;
+            }
             Request::Host => Kind::Host,
             Request::Join { code } => Kind::Join(code),
         };
@@ -106,6 +117,7 @@ impl Daemon {
             Ok(key) => Event::Rooms {
                 my_code: rooms_api::code_for(key.public()).to_string(),
                 rooms: store.rooms().to_vec(),
+                friends: store.friends().to_vec(),
             },
             Err(err) => error(&format!("Couldn't save: {err}")),
         }

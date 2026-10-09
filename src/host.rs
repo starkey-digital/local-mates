@@ -2,33 +2,36 @@ use std::{
     collections::HashMap,
     net::Ipv4Addr,
     sync::{Arc, RwLock},
+    time::Duration,
 };
 
 use anyhow::Result;
 use bytes::Bytes;
-use iroh::{Endpoint, endpoint::Connection};
-use tokio::task::JoinSet;
+use iroh::{Endpoint, EndpointId, endpoint::Connection};
+use tokio::{sync::oneshot, task::JoinSet};
 use tun_rs::AsyncDevice;
 
 use crate::{
     ipc::{Event, Events},
-    join, link,
+    link,
     packet::{self, HOST_IP},
     rooms_api,
     session::Shared,
+    store::Device,
     tun,
 };
 
 type Peers = Arc<RwLock<HashMap<Ipv4Addr, Connection>>>;
+
+const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+const APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The host is the hub: every joiner connects to it and it switches packets between them.
 pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
     let tun = Arc::new(tun::open(HOST_IP)?);
     let peers = Peers::default();
     let events = shared.events.clone();
-    let room = format!("{}'s room", gethostname::gethostname().to_string_lossy());
-    // Must fit the joiner's read limit; the cut can split a character, which they render lossily.
-    let room: Arc<[u8]> = room.as_bytes()[..room.len().min(join::MAX_NAME)].into();
+    let room: Arc<str> = format!("{}'s room", link::device_name()).into();
 
     let _ = events.send(Event::Hosting {
         code: rooms_api::code_for(endpoint.id()).to_string(),
@@ -42,9 +45,9 @@ pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
     tasks.spawn(rooms_api::announce(shared.http.clone(), endpoint.id()));
 
     while let Some(incoming) = endpoint.accept().await {
-        let (tun, peers, events, room) = (tun.clone(), peers.clone(), events.clone(), room.clone());
+        let (tun, peers, shared, room) = (tun.clone(), peers.clone(), shared.clone(), room.clone());
         tasks.spawn(async move {
-            if let Err(err) = admit(incoming, &room, tun, peers, events).await {
+            if let Err(err) = admit(incoming, &room, tun, peers, &shared).await {
                 tracing::warn!("peer failed to join: {err:#}");
             }
         });
@@ -55,28 +58,68 @@ pub async fn run(endpoint: Endpoint, shared: &Shared) -> Result<()> {
 
 async fn admit(
     incoming: iroh::endpoint::Incoming,
-    room: &[u8],
+    room: &str,
     tun: Arc<AsyncDevice>,
     peers: Peers,
-    events: Events,
+    shared: &Shared,
 ) -> Result<()> {
     let conn = incoming.accept()?.await?;
+    let hello = tokio::time::timeout(HELLO_TIMEOUT, async {
+        anyhow::Ok(conn.accept_uni().await?.read_to_end(link::MAX_NAME).await?)
+    })
+    .await??;
+    let name = link::decode_name(&hello, "Unknown device");
+
+    if !approve(shared, conn.remote_id(), &name).await? {
+        conn.close(link::CLOSE_DENIED.into(), b"not allowed");
+        return Ok(());
+    }
     let Some(ip) = claim_ip(&peers, &conn) else {
-        conn.close(1u32.into(), b"session full");
+        conn.close(link::CLOSE_FULL.into(), b"room full");
         return Ok(());
     };
 
-    let who = format!("{ip} ({})", conn.remote_id().fmt_short());
-    let res = serve(&conn, ip, room, &who, &tun, &peers, &events).await;
+    let who = format!("{name} ({ip})");
+    let res = serve(&conn, ip, room, &who, &tun, &peers, &shared.events).await;
     peers.write().unwrap().remove(&ip);
-    let _ = events.send(Event::Peer { who, joined: false });
+    let _ = shared.events.send(Event::Peer { who, joined: false });
     res
+}
+
+/// Friends go straight in; anyone else waits for someone at the host to say yes.
+async fn approve(shared: &Shared, id: EndpointId, name: &str) -> Result<bool> {
+    if shared.store.lock().unwrap().is_friend(&id.to_string()) {
+        return Ok(true);
+    }
+
+    let (answer, answered) = oneshot::channel();
+    shared.approvals.lock().unwrap().insert(id, answer);
+    let _ = shared.events.send(Event::JoinRequest {
+        id: id.to_string(),
+        name: name.into(),
+    });
+    let allowed = matches!(
+        tokio::time::timeout(APPROVAL_TIMEOUT, answered).await,
+        Ok(Ok(true))
+    );
+    shared.approvals.lock().unwrap().remove(&id);
+    let _ = shared
+        .events
+        .send(Event::JoinRequestClosed { id: id.to_string() });
+
+    if allowed {
+        shared.store.lock().unwrap().add_friend(Device {
+            name: name.into(),
+            endpoint_id: id.to_string(),
+        })?;
+    }
+    Ok(allowed)
 }
 
 async fn serve(
     conn: &Connection,
     ip: Ipv4Addr,
-    room: &[u8],
+    room: &str,
     who: &str,
     tun: &AsyncDevice,
     peers: &Peers,
@@ -84,7 +127,7 @@ async fn serve(
 ) -> Result<()> {
     let mut assign = conn.open_uni().await?;
     assign.write_all(&ip.octets()).await?;
-    assign.write_all(room).await?;
+    assign.write_all(link::encode_name(room)).await?;
     assign.finish()?;
 
     let _ = events.send(Event::Peer {
