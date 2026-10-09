@@ -60,7 +60,7 @@ pub fn install() -> Result<()> {
 
     let info = ServiceInfo {
         name: NAME.into(),
-        display_name: "local mates".into(),
+        display_name: "Local Mates".into(),
         service_type: ServiceType::OWN_PROCESS,
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
@@ -80,7 +80,7 @@ pub fn install() -> Result<()> {
     service.set_description("Virtual LAN for playing LAN games with friends")?;
     service.start::<&str>(&[])?;
 
-    println!("local mates service installed and running.");
+    println!("Local Mates service installed and running.");
     Ok(())
 }
 
@@ -98,7 +98,7 @@ pub fn uninstall() -> Result<()> {
     if let Err(err) = fs::remove_dir_all(install_dir()) {
         eprintln!("Couldn't remove {}: {err}", install_dir().display());
     }
-    println!("local mates service removed.");
+    println!("Local Mates service removed.");
     Ok(())
 }
 

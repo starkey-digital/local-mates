@@ -17,7 +17,7 @@ fn check() -> Result<(), velopack::Error> {
     if let UpdateCheck::UpdateAvailable(update) = manager.check_for_updates()? {
         manager.download_updates(&update, None)?;
         println!(
-            "Update {} downloaded; it installs next time you start local mates.",
+            "Update {} downloaded; it installs next time you start Local Mates.",
             update.TargetFullRelease.Version
         );
     }

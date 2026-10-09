@@ -1,4 +1,4 @@
-//! The local mates window and tray icon. A plain client of the background service, like the
+//! The Local Mates window and tray icon. A plain client of the background service, like the
 //! CLI: quitting leaves any session running. Closing the window only hides it to the tray.
 
 // No console window behind the app on Windows.

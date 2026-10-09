@@ -43,7 +43,7 @@ enum Command {
 #[cfg(windows)]
 #[derive(Subcommand)]
 enum ServiceAction {
-    /// Install or update the service from this copy of local mates
+    /// Install or update the service from this copy of Local Mates
     Install,
     Uninstall,
 }

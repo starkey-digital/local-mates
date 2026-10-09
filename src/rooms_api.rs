@@ -43,7 +43,7 @@ impl RoomsApi {
             .get(self.url(code))
             .send()
             .await
-            .context("couldn't reach the local mates server to look up that code")?;
+            .context("couldn't reach the Local Mates server to look up that code")?;
         match res.status() {
             StatusCode::NOT_FOUND => bail!("no room with code {code} is online right now"),
             StatusCode::TOO_MANY_REQUESTS => {
@@ -76,7 +76,7 @@ impl RoomsApi {
                 Ok(res) if !res.status().is_success() => {
                     tracing::warn!("couldn't list room: {}", res.status());
                 }
-                Err(err) => tracing::warn!("couldn't reach the local mates server: {err}"),
+                Err(err) => tracing::warn!("couldn't reach the Local Mates server: {err}"),
                 Ok(_) => {}
             }
         }

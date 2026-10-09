@@ -46,7 +46,7 @@ component BigCode inherits Text {
 // Keeps the app running with the window closed, so join requests still reach you.
 export component Tray inherits SystemTrayIcon {
     icon: @image-url("icon.png");
-    tooltip: "local mates";
+    tooltip: "Local Mates";
 
     callback open();
     callback quit();
@@ -55,7 +55,7 @@ export component Tray inherits SystemTrayIcon {
 
     Menu {
         MenuItem {
-            title: "Open local mates";
+            title: "Open Local Mates";
             activated => { open(); }
         }
         MenuItem {
@@ -66,7 +66,7 @@ export component Tray inherits SystemTrayIcon {
 }
 
 export component AppWindow inherits Window {
-    title: "local mates";
+    title: "Local Mates";
     icon: @image-url("icon.png");
     preferred-width: 380px;
     preferred-height: 600px;
@@ -104,11 +104,15 @@ export component AppWindow inherits Window {
             spacing: 14px;
             alignment: start;
 
-            Text {
-                text: "local mates";
-                color: Palette.foreground;
-                font-size: 22px;
-                font-weight: 700;
+            Image {
+                source: Palette.color-scheme == ColorScheme.dark
+                    ? @image-url("wordmark-dark.png")
+                    : @image-url("wordmark.png");
+                height: 52px;
+                image-fit: contain;
+                horizontal-alignment: left;
+                accessible-role: image;
+                accessible-label: "Local Mates";
             }
 
             if phase == Phase.offline: Card {
@@ -117,8 +121,8 @@ export component AppWindow inherits Window {
                     spacing: 10px;
                     Label {
                         text: can-setup
-                            ? "local mates needs a one-time setup to create its network adapter. Windows will ask for permission."
-                            : "The local mates service isn't running. Start it with: sudo local-mates daemon";
+                            ? "Local Mates needs a one-time setup to create its network adapter. Windows will ask for permission."
+                            : "The Local Mates service isn't running. Start it with: sudo local-mates daemon";
                     }
                     if can-setup: Button {
                         text: setting-up ? "Setting up…" : "Set up";

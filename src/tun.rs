@@ -25,7 +25,7 @@ impl Adapter for AsyncDevice {
 }
 
 #[cfg(windows)]
-const ADAPTER_NAME: &str = "local mates";
+const ADAPTER_NAME: &str = "Local Mates";
 
 pub fn open(ip: Ipv4Addr) -> Result<AsyncDevice> {
     let builder = DeviceBuilder::new().ipv4(ip, PREFIX, None);

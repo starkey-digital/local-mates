@@ -1,4 +1,4 @@
-//! The local mates core, shared by the CLI/service (`local-mates`) and the desktop app.
+//! The Local Mates core, shared by the CLI/service (`local-mates`) and the desktop app.
 
 pub mod client;
 pub mod daemon;
