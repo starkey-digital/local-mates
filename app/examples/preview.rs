@@ -27,7 +27,9 @@ impl Platform for Offscreen {
 }
 
 fn main() {
-    let out = std::env::args().nth(1).expect("usage: preview <output-dir>");
+    let out = std::env::args()
+        .nth(1)
+        .expect("usage: preview <output-dir>");
     fs::create_dir_all(&out).unwrap();
 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -41,8 +43,12 @@ fn main() {
         ("2-idle", |ui| {
             ui.set_phase(Phase::Idle);
             ui.set_rooms(model(vec![
-                Room { name: "Sam's room".into() },
-                Room { name: "LAN party at Alex's".into() },
+                Room {
+                    name: "Sam's room".into(),
+                },
+                Room {
+                    name: "LAN party at Alex's".into(),
+                },
             ]));
         }),
         ("3-hosting-request", |ui| {

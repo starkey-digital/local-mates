@@ -1,5 +1,5 @@
-//! The local mates window. A plain client of the background service, like the CLI: closing it
-//! leaves any session running.
+//! The local mates window and tray icon. A plain client of the background service, like the
+//! CLI: quitting leaves any session running. Closing the window only hides it to the tray.
 
 // No console window behind the app on Windows.
 #![cfg_attr(windows, windows_subsystem = "windows")]
@@ -27,10 +27,24 @@ fn main() -> anyhow::Result<()> {
     let (commands, queued) = mpsc::unbounded_channel();
     wire_callbacks(&ui, commands);
 
+    // Visible from creation; it keeps the event loop alive while the window is hidden.
+    let tray = Tray::new()?;
+    let weak = ui.as_weak();
+    tray.on_open(move || {
+        if let Some(ui) = weak.upgrade() {
+            let _ = ui.show();
+        }
+    });
+    tray.on_quit(|| {
+        let _ = slint::quit_event_loop();
+    });
+
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.spawn(connection(ui.as_weak(), queued));
 
-    ui.run()?;
+    ui.show()?;
+    slint::run_event_loop_until_quit()?;
+    drop(tray);
     Ok(())
 }
 
@@ -206,6 +220,8 @@ fn apply(ui: &AppWindow, event: Event) {
                     name: name.into(),
                 });
                 ui.set_requests(ModelRc::new(VecModel::from(requests)));
+                // Someone's waiting on an answer: bring the window back from the tray.
+                let _ = ui.show();
             }
         }
         Event::JoinRequestClosed { id } => remove_request(ui, &id),

@@ -43,8 +43,31 @@ component BigCode inherits Text {
     letter-spacing: 3px;
 }
 
+// Keeps the app running with the window closed, so join requests still reach you.
+export component Tray inherits SystemTrayIcon {
+    icon: @image-url("icon.png");
+    tooltip: "local mates";
+
+    callback open();
+    callback quit();
+
+    clicked => { open(); }
+
+    Menu {
+        MenuItem {
+            title: "Open local mates";
+            activated => { open(); }
+        }
+        MenuItem {
+            title: "Quit";
+            activated => { quit(); }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "local mates";
+    icon: @image-url("icon.png");
     preferred-width: 380px;
     preferred-height: 600px;
     min-width: 340px;

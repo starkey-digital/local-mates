@@ -6,7 +6,7 @@ Windows-first, also runs on macOS and Linux. Work in progress.
 
 ## Usage
 
-Open **local mates** (`local-mates-app`). The first time, it asks to set up its background service — the one admin prompt. Then open your room and share the code, or type a friend's code to join. Closing the window leaves your session running.
+Open **local mates** (`local-mates-app`). The first time, it asks to set up its background service — the one admin prompt. Then open your room and share the code, or type a friend's code to join. Closing the window keeps it in the tray, where it pops back up when someone wants to join; Quit from the tray menu leaves any session running.
 
 ![local mates hosting a room](docs/hosting.png)
 
